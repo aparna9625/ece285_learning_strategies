@@ -6,6 +6,10 @@ __pycache__/
 # C extensions
 *.so
 
+# Datasets and model runs
+data/
+SGL-pc-darts/search-*
+
 # Distribution / packaging
 .Python
 build/

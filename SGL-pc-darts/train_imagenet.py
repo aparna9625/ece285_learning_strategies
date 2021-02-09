@@ -21,10 +21,9 @@ from model import NetworkImageNet as Network
 
 parser = argparse.ArgumentParser("training imagenet")
 parser.add_argument('--workers', type=int, default=32, help='number of workers to load dataset')
-parser.add_argument('--batch_size', type=int, default=768, help='batch size')
+parser.add_argument('--batch_size', type=int, default=1024, help='batch size')
 parser.add_argument('--learning_rate', type=float, default=0.5, help='init learning rate')
 parser.add_argument('--momentum', type=float, default=0.9, help='momentum')
-parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--weight_decay', type=float, default=3e-5, help='weight decay')
 parser.add_argument('--report_freq', type=float, default=100, help='report frequency')
 parser.add_argument('--epochs', type=int, default=250, help='num of training epochs')
@@ -33,7 +32,7 @@ parser.add_argument('--layers', type=int, default=14, help='total number of laye
 parser.add_argument('--auxiliary', action='store_true', default=False, help='use auxiliary tower')
 parser.add_argument('--auxiliary_weight', type=float, default=0.4, help='weight for auxiliary loss')
 parser.add_argument('--drop_path_prob', type=float, default=0, help='drop path probability')
-parser.add_argument('--save', type=str, default='EXP', help='experiment name')
+parser.add_argument('--save', type=str, default='./', help='experiment name')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--arch', type=str, default='PCDARTS', help='which architecture to use')
 parser.add_argument('--grad_clip', type=float, default=5., help='gradient clipping')
@@ -45,7 +44,7 @@ parser.add_argument('--note', type=str, default='try', help='note for this run')
 
 args, unparsed = parser.parse_known_args()
 
-args.save = '{}-eval-{}-{}'.format(args.save, args.note, time.strftime("%Y%m%d-%H%M%S"))
+args.save = '{}eval-{}-{}'.format(args.save, args.note, time.strftime("%Y%m%d-%H%M%S"))
 utils.create_exp_dir(args.save, scripts_to_save=glob.glob('*.py'))
 
 log_format = '%(asctime)s %(message)s'
@@ -77,7 +76,6 @@ def main():
         logging.info('No GPU device available')
         sys.exit(1)
     np.random.seed(args.seed)
-    # torch.cuda.set_device(args.gpu)
     cudnn.benchmark = True
     torch.manual_seed(args.seed)
     cudnn.enabled=True
@@ -144,26 +142,7 @@ def main():
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
     best_acc_top1 = 0
     best_acc_top5 = 0
-    # lr = args.learning_rate
-    # for epoch in range(args.epochs):
-    #     if args.lr_scheduler == 'cosine':
-    #         scheduler.step()
-    #         current_lr = scheduler.get_lr()[0]
-    #     elif args.lr_scheduler == 'linear':
-    #         current_lr = adjust_lr(optimizer, epoch)
-    #     else:
-    #         print('Wrong lr type, exit')
-    #         sys.exit(1)
-    #     logging.info('Epoch: %d lr %e', epoch, current_lr)
-    #     if epoch < 5 and args.batch_size > 256:
-    #         for param_group in optimizer.param_groups:
-    #             param_group['lr'] = lr * (epoch + 1) / 5.0
-    #         logging.info('Warming-up Epoch: %d, LR: %e', epoch, lr * (epoch + 1) / 5.0)
-    #     if num_gpus > 1:
-    #         model.module.drop_path_prob = args.drop_path_prob * epoch / args.epochs
-    #     else:
-    #         model.drop_path_prob = args.drop_path_prob * epoch / args.epochs
-
+    lr = args.learning_rate
     for epoch in range(args.epochs):
         if args.lr_scheduler == 'cosine':
             scheduler.step()
@@ -176,14 +155,12 @@ def main():
         logging.info('Epoch: %d lr %e', epoch, current_lr)
         if epoch < 5 and args.batch_size > 256:
             for param_group in optimizer.param_groups:
-                param_group['lr'] = current_lr * (epoch + 1) / 5.0
-            logging.info('Warming-up Epoch: %d, LR: %e', epoch, current_lr * (epoch + 1) / 5.0)
+                param_group['lr'] = lr * (epoch + 1) / 5.0
+            logging.info('Warming-up Epoch: %d, LR: %e', epoch, lr * (epoch + 1) / 5.0)
         if num_gpus > 1:
             model.module.drop_path_prob = args.drop_path_prob * epoch / args.epochs
         else:
             model.drop_path_prob = args.drop_path_prob * epoch / args.epochs
-
-
         epoch_start = time.time()
         train_acc, train_obj = train(train_queue, model, criterion_smooth, optimizer)
         logging.info('Train_acc: %f', train_acc)
