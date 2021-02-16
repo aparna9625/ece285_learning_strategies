@@ -14,6 +14,7 @@ import torchvision.datasets as dset
 import torch.backends.cudnn as cudnn
 
 from torch.autograd import Variable
+from torch.utils.tensorboard import SummaryWriter
 from model_search_coop import Network
 from architect_coop import Architect
 from genotypes import PRIMITIVES
@@ -136,6 +137,7 @@ def main():
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
 
+  writer = SummaryWriter()
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
   arch1, alphas_normal1, alphas_reduce1,\
@@ -248,6 +250,10 @@ def main():
     lr1_pretrain = scheduler1_pretrain.get_lr()[0]
     logging.info('epoch %d lr %e lr1 %e lr_pretrain %e lr1_pretrain %e',
                  epoch, lr, lr1, lr_pretrain, lr1_pretrain)
+    writer.add_scalar('Learning Rate/train_model1', lr, epoch)
+    writer.add_scalar('Learning Rate/train_model2', lr1, epoch)
+    writer.add_scalar('Learning Rate/pretrain_model1', lr_pretrain, epoch)
+    writer.add_scalar('Learning Rate/pretrain_model2', lr1_pretrain, epoch)
     if epoch >= args.pretrain_steps:
         genotype = model.genotype()
         genotype1 = model1.genotype()
@@ -280,11 +286,15 @@ def main():
         lr,
         lr1,
         lr_pretrain,
-        lr1_pretrain)
+        lr1_pretrain,
+        writer)
     if epoch >= args.pretrain_steps:
         logging.info('train_acc %f train_acc1 %f', train_acc, train_acc1)
     else:
         logging.info('pretrain_acc %f pretrain_acc1 %f', train_acc, train_acc1)
+
+    writer.add_scalar('Accuracy/train_model1', train_acc, epoch)
+    writer.add_scalar('Accuracy/train_model2', train_acc1, epoch)
     if epoch >= args.pretrain_steps:
         scheduler_pretrain.step()
         scheduler1_pretrain.step()
@@ -294,13 +304,15 @@ def main():
         scheduler_pretrain.step()
         scheduler1_pretrain.step()
     # validation
-    if epoch >= args.pretrain_steps and (args.epochs + args.pretrain_steps) - epoch <= 1:
+    if epoch >= args.pretrain_steps and (epoch + args.pretrain_steps) % 10 == 0:
         valid_acc, valid_obj, valid_acc1, valid_obj1 = infer(
             valid_queue,
             model,
             model1,
             criterion)
         logging.info('valid_acc %f valid_acc1 %f', valid_acc, valid_acc1)
+        writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
+        writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
 
         utils.save(model, os.path.join(args.save, 'weights.pt'))
         utils.save(model1, os.path.join(args.save, 'weights1.pt'))
@@ -348,7 +360,8 @@ def train(args,
           lr,
           lr1,
           lr_pretrain,
-          lr1_pretrain):
+          lr1_pretrain,
+          writer):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -456,7 +469,14 @@ def train(args,
           logging.info('train 1st %03d %e %f %f', step,
                        objs.avg, top1.avg, top5.avg)
           logging.info('train 2nd %03d %e %f %f', step,
-                       objs1.avg, top1_1.avg, top5_1.avg)
+                       objs1.avg, top1_1.avg, top5_1.avg)  
+          writer.add_scalar('Loss/train_model1', objs.avg, step)
+          writer.add_scalar('Loss/train_model2', objs1.avg, step)
+          writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
+          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
+          writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
+          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
+
         # return top1.avg, objs.avg, top1_1.avg, objs1.avg
     else:
         assert (model_pretrain._arch_parameters[0]
