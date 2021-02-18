@@ -250,10 +250,10 @@ def main():
     lr1_pretrain = scheduler1_pretrain.get_lr()[0]
     logging.info('epoch %d lr %e lr1 %e lr_pretrain %e lr1_pretrain %e',
                  epoch, lr, lr1, lr_pretrain, lr1_pretrain)
-    writer.add_scalar('Learning Rate/train_model1', lr, epoch)
-    writer.add_scalar('Learning Rate/train_model2', lr1, epoch)
-    writer.add_scalar('Learning Rate/pretrain_model1', lr_pretrain, epoch)
-    writer.add_scalar('Learning Rate/pretrain_model2', lr1_pretrain, epoch)
+    writer.add_scalar('Learning_rate/train_model1', lr, epoch)
+    writer.add_scalar('Learning_rate/train_model2', lr1, epoch)
+    writer.add_scalar('Learning_rate/pretrain_model1', lr_pretrain, epoch)
+    writer.add_scalar('Learning_rate/pretrain_model2', lr1_pretrain, epoch)
     if epoch >= args.pretrain_steps:
         genotype = model.genotype()
         genotype1 = model1.genotype()
