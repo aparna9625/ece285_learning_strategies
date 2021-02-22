@@ -8,13 +8,6 @@ This code is based on the implementation of [P-DARTS](https://github.com/chenxin
 
 ## Architecture Search
 
-<!-- **Search on NAS-Bench-201 Space: (3 datasets to choose from)**
-
-* Data preparation: Please first download the 201 benchmark file and prepare the api follow [this repository](https://github.com/D-X-Y/NAS-Bench-201).
-
-* ```cd 201-space && python train_search_progressive.py``` -->
-
-
 **Composing SGL with PC-DARTS:**
 
 ```

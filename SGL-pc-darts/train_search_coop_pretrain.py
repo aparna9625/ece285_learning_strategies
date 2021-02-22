@@ -137,8 +137,8 @@ def main():
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
 
-  writer = SummaryWriter()
-  val_writer = SummaryWriter()
+  writer = SummaryWriter(comment='train')
+  val_writer = SummaryWriter(comment='val')
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
   arch1, alphas_normal1, alphas_reduce1,\
@@ -213,7 +213,7 @@ def main():
     train_data = dset.CIFAR10(
         root=args.data, train=True, download=True, transform=train_transform)
 
-  num_train = 200 #len(train_data)
+  num_train = 20000 #len(train_data)
   indices = list(range(num_train))
   split = int(np.floor(args.train_portion * num_train))
 
@@ -311,7 +311,8 @@ def main():
             valid_queue,
             model,
             model1,
-            criterion)
+            criterion,
+            val_writer)
         logging.info('valid_acc %f valid_acc1 %f', valid_acc, valid_acc1)
         val_writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
         val_writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
@@ -319,7 +320,7 @@ def main():
         utils.save(model1, os.path.join(args.save, 'checkpoint_weights1.pt'))
         val_loss[epoch] = valid_obj + valid_obj1
         val_difference = val_loss[epoch-6:epoch-1] - val_loss[epoch-5:epoch]
-        if np.all(val_difference <= 0):
+        if np.all(val_difference < 0):
             logging.info('Early stopping due to increasing validation loss')
             break
         if val_loss[epoch] == min(val_loss):
@@ -554,7 +555,7 @@ def train(args,
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 
 
-def infer(valid_queue, model, model1, criterion):
+def infer(valid_queue, model, model1, criterion, val_writer):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -566,10 +567,8 @@ def infer(valid_queue, model, model1, criterion):
 
   with torch.no_grad():
     for step, (input, target) in enumerate(valid_queue):
-        #input = input.cuda()
-        #target = target.cuda(non_blocking=True)
-        input = Variable(input, volatile=True).cuda()
-        target = Variable(target, volatile=True).cuda(non_blocking=True)
+        input = input.cuda()
+        target = target.cuda(non_blocking=True)
         logits = model(input)
         loss = criterion(logits, target)
         logits1 = model1(input)
