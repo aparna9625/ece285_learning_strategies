@@ -55,7 +55,7 @@ parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float,
                     default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float,
-                    default=0.5, help='portion of training data')
+                    default=0.75, help='portion of training data')
 parser.add_argument('--unrolled', action='store_true',
                     default=False, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float,
@@ -212,7 +212,7 @@ def main():
     train_data = dset.CIFAR10(
         root=args.data, train=True, download=True, transform=train_transform)
 
-  num_train = 10000 #len(train_data)
+  num_train = 20000 #len(train_data)
   indices = list(range(num_train))
   split = int(np.floor(args.train_portion * num_train))
 
