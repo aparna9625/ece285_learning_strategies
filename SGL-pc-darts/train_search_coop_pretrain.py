@@ -55,7 +55,7 @@ parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float,
                     default=5, help='gradient clipping')
 parser.add_argument('--train_portion', type=float,
-                    default=0.75, help='portion of training data')
+                    default=0.5, help='portion of training data')
 parser.add_argument('--unrolled', action='store_true',
                     default=False, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float,
@@ -138,6 +138,7 @@ def main():
   logging.info("args = %s", args)
 
   writer = SummaryWriter()
+  val_writer = SummaryWriter()
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
   arch1, alphas_normal1, alphas_reduce1,\
@@ -212,7 +213,7 @@ def main():
     train_data = dset.CIFAR10(
         root=args.data, train=True, download=True, transform=train_transform)
 
-  num_train = 20000 #len(train_data)
+  num_train = 200 #len(train_data)
   indices = list(range(num_train))
   split = int(np.floor(args.train_portion * num_train))
 
@@ -242,6 +243,7 @@ def main():
       optimizer1_pretrain, float(args.epochs + args.pretrain_steps), eta_min=args.learning_rate_min)
 
   architect = Architect(model, model1, args)
+  val_loss = np.zeros(args.epochs+args.pretrain_steps)
 
   for epoch in range(args.epochs + args.pretrain_steps):
     lr = scheduler.get_lr()[0]
@@ -260,11 +262,11 @@ def main():
         logging.info('genotype1 = %s', genotype)
         logging.info('genotype2 = %s', genotype1)
 
-        print(F.softmax(model.alphas_normal, dim=-1))
-        print(F.softmax(model.alphas_reduce, dim=-1))
+        #print(F.softmax(model.alphas_normal, dim=-1))
+        #print(F.softmax(model.alphas_reduce, dim=-1))
 
-        print(F.softmax(model1.alphas_normal, dim=-1))
-        print(F.softmax(model1.alphas_reduce, dim=-1))
+        #print(F.softmax(model1.alphas_normal, dim=-1))
+        #print(F.softmax(model1.alphas_reduce, dim=-1))
 
     # training
     train_acc, train_obj, train_acc1, train_obj1 = train(
@@ -304,18 +306,25 @@ def main():
         scheduler_pretrain.step()
         scheduler1_pretrain.step()
     # validation
-    if epoch >= args.pretrain_steps and (epoch + args.pretrain_steps) % 10 == 0:
+    if epoch >= args.pretrain_steps and epoch % 10 == 0:
         valid_acc, valid_obj, valid_acc1, valid_obj1 = infer(
             valid_queue,
             model,
             model1,
             criterion)
         logging.info('valid_acc %f valid_acc1 %f', valid_acc, valid_acc1)
-        writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
-        writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
-
-        utils.save(model, os.path.join(args.save, 'weights.pt'))
-        utils.save(model1, os.path.join(args.save, 'weights1.pt'))
+        val_writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
+        val_writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
+        utils.save(model, os.path.join(args.save, 'checkpoint_weights.pt'))
+        utils.save(model1, os.path.join(args.save, 'checkpoint_weights1.pt'))
+        val_loss[epoch] = valid_obj + valid_obj1
+        val_difference = val_loss[epoch-6:epoch-1] - val_loss[epoch-5:epoch]
+        if np.all(val_difference <= 0):
+            logging.info('Early stopping due to increasing validation loss')
+            break
+        if val_loss[epoch] == min(val_loss):
+           utils.save(model, os.path.join(args.save, 'best_weights.pt'))
+           utils.save(model1, os.path.join(args.save, 'best_weights1.pt'))
 
 
 
@@ -517,6 +526,12 @@ def train(args,
                        objs.avg, top1.avg, top5.avg)
           logging.info('pretrain 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
+          writer.add_scalar('Loss/train_model1', objs.avg, step)
+          writer.add_scalar('Loss/train_model2', objs1.avg, step)
+          writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
+          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
+          writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
+          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
 
 
 
@@ -576,6 +591,12 @@ def infer(valid_queue, model, model1, criterion):
                        objs.avg, top1.avg, top5.avg)
           logging.info('valid 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
+          val_writer.add_scalar('Loss/train_model1', objs.avg, step)
+          val_writer.add_scalar('Loss/train_model2', objs1.avg, step)
+          val_writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
+          val_writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
+          val_writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
+          val_writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
 
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 
