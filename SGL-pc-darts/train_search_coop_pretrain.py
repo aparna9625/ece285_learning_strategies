@@ -312,7 +312,8 @@ def main():
             model,
             model1,
             criterion,
-            val_writer)
+            val_writer,
+            epoch)
         logging.info('valid_acc %f valid_acc1 %f', valid_acc, valid_acc1)
         val_writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
         val_writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
@@ -555,7 +556,7 @@ def train(args,
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 
 
-def infer(valid_queue, model, model1, criterion, val_writer):
+def infer(valid_queue, model, model1, criterion, val_writer, epoch):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -590,12 +591,12 @@ def infer(valid_queue, model, model1, criterion, val_writer):
                        objs.avg, top1.avg, top5.avg)
           logging.info('valid 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
-          val_writer.add_scalar('Loss/train_model1', objs.avg, step)
-          val_writer.add_scalar('Loss/train_model2', objs1.avg, step)
-          val_writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
-          val_writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
-          val_writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
-          val_writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
+          val_writer.add_scalar('Loss/train_model1', objs.avg, (epoch*200 + step))
+          val_writer.add_scalar('Loss/train_model2', objs1.avg, (epoch*200 + step)) 
+          val_writer.add_scalar('Accuracy/Top1_model1', top1.avg, (epoch*200 + step)) 
+          val_writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, (epoch*200 + step))
+          val_writer.add_scalar('Accuracy/Top5_model1', top5.avg, (epoch*200 + step))
+          val_writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, (epoch*200 + step)) 
 
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 
