@@ -480,12 +480,12 @@ def train(args,
                        objs.avg, top1.avg, top5.avg)
           logging.info('train 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)  
-          writer.add_scalar('Loss/train_model1', objs.avg, step)
-          writer.add_scalar('Loss/train_model2', objs1.avg, step)
-          writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
-          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
-          writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
-          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
+          writer.add_scalar('Loss/train_model1', objs.avg, (epoch*200 + step))
+          writer.add_scalar('Loss/train_model2', objs1.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top1_model1', top1.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top5_model1', top5.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg,(epoch*200 + step))
 
         # return top1.avg, objs.avg, top1_1.avg, objs1.avg
     else:

@@ -14,6 +14,7 @@ import torchvision.datasets as dset
 import torch.backends.cudnn as cudnn
 
 from torch.autograd import Variable
+from torch.utils.tensorboard import SummaryWriter
 from model import NetworkCIFAR as Network
 
 
@@ -72,6 +73,8 @@ def main():
   genotype = eval("genotypes.%s" % args.arch)
   model = Network(args.init_channels, CIFAR_CLASSES, args.layers, args.auxiliary, genotype)
   model = model.cuda()
+  writer = SummaryWriter(comment='-train')
+  val_writer = SummaryWriter(comment='-val')
 
   logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
@@ -107,11 +110,11 @@ def main():
     logging.info('epoch %d lr %e', epoch, scheduler.get_lr()[0])
     model.drop_path_prob = args.drop_path_prob * epoch / args.epochs
 
-    train_acc, train_obj = train(train_queue, model, criterion, optimizer)
+    train_acc, train_obj = train(train_queue, model, criterion, optimizer, epoch, writer)
     scheduler.step()
     logging.info('train_acc %f', train_acc)
 
-    valid_acc, valid_obj = infer(valid_queue, model, criterion)
+    valid_acc, valid_obj = infer(valid_queue, model, criterion, epoch, val_writer)
     if valid_acc > best_acc:
         best_acc = valid_acc
     logging.info('valid_acc %f, best_acc %f', valid_acc, best_acc)
@@ -119,7 +122,7 @@ def main():
     utils.save(model, os.path.join(args.save, 'weights.pt'))
 
 
-def train(train_queue, model, criterion, optimizer):
+def train(train_queue, model, criterion, optimizer, epoch, writer):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -147,11 +150,14 @@ def train(train_queue, model, criterion, optimizer):
 
     if step % args.report_freq == 0:
       logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+      writer.add_scalar('Loss/train', objs.avg, (epoch*200 + step))
+      writer.add_scalar('Accuracy/top1', top1.avg, (epoch*200 + step))
+      writer.add_scalar('Accuracy/top5', top5.avg, (epoch*200 + step))
 
   return top1.avg, objs.avg
 
 
-def infer(valid_queue, model, criterion):
+def infer(valid_queue, model, criterion, epoch, val_writer):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -173,6 +179,9 @@ def infer(valid_queue, model, criterion):
 
       if step % args.report_freq == 0:
         logging.info('valid %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
+        val_writer.add_scalar('Loss/val', obs.avg, (epoch*200 + step))
+        val_writer.add_scalar('Accuracy/top1', top1.avg, (epoch*200 + step))
+        val_writer.add_scalar('Accuracy/top5', top5.avg, (epoch*200 + step))
 
   return top1.avg, objs.avg
 
