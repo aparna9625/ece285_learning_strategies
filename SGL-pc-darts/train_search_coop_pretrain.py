@@ -137,7 +137,8 @@ def main():
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
 
-  writer = SummaryWriter()
+  writer = SummaryWriter(comment='train')
+  val_writer = SummaryWriter(comment='val')
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
   arch1, alphas_normal1, alphas_reduce1,\
@@ -212,7 +213,7 @@ def main():
     train_data = dset.CIFAR10(
         root=args.data, train=True, download=True, transform=train_transform)
 
-  num_train = 10000 #len(train_data)
+  num_train = 20000 #len(train_data)
   indices = list(range(num_train))
   split = int(np.floor(args.train_portion * num_train))
 
@@ -242,6 +243,7 @@ def main():
       optimizer1_pretrain, float(args.epochs + args.pretrain_steps), eta_min=args.learning_rate_min)
 
   architect = Architect(model, model1, args)
+  val_loss = np.zeros(args.epochs+args.pretrain_steps)
 
   for epoch in range(args.epochs + args.pretrain_steps):
     lr = scheduler.get_lr()[0]
@@ -260,11 +262,11 @@ def main():
         logging.info('genotype1 = %s', genotype)
         logging.info('genotype2 = %s', genotype1)
 
-        print(F.softmax(model.alphas_normal, dim=-1))
-        print(F.softmax(model.alphas_reduce, dim=-1))
+        #print(F.softmax(model.alphas_normal, dim=-1))
+        #print(F.softmax(model.alphas_reduce, dim=-1))
 
-        print(F.softmax(model1.alphas_normal, dim=-1))
-        print(F.softmax(model1.alphas_reduce, dim=-1))
+        #print(F.softmax(model1.alphas_normal, dim=-1))
+        #print(F.softmax(model1.alphas_reduce, dim=-1))
 
     # training
     train_acc, train_obj, train_acc1, train_obj1 = train(
@@ -304,18 +306,27 @@ def main():
         scheduler_pretrain.step()
         scheduler1_pretrain.step()
     # validation
-    if epoch >= args.pretrain_steps and (epoch + args.pretrain_steps) % 10 == 0:
+    if epoch >= args.pretrain_steps and epoch % 10 == 0:
         valid_acc, valid_obj, valid_acc1, valid_obj1 = infer(
             valid_queue,
             model,
             model1,
-            criterion)
+            criterion,
+            val_writer,
+            epoch)
         logging.info('valid_acc %f valid_acc1 %f', valid_acc, valid_acc1)
-        writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
-        writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
-
-        utils.save(model, os.path.join(args.save, 'weights.pt'))
-        utils.save(model1, os.path.join(args.save, 'weights1.pt'))
+        val_writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
+        val_writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
+        utils.save(model, os.path.join(args.save, 'checkpoint_weights.pt'))
+        utils.save(model1, os.path.join(args.save, 'checkpoint_weights1.pt'))
+        val_loss[epoch] = valid_obj + valid_obj1
+        val_difference = val_loss[epoch-6:epoch-1] - val_loss[epoch-5:epoch]
+        if np.all(val_difference < 0):
+            logging.info('Early stopping due to increasing validation loss')
+            break
+        if val_loss[epoch] == min(val_loss):
+           utils.save(model, os.path.join(args.save, 'best_weights.pt'))
+           utils.save(model1, os.path.join(args.save, 'best_weights1.pt'))
 
 
 
@@ -470,12 +481,12 @@ def train(args,
                        objs.avg, top1.avg, top5.avg)
           logging.info('train 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)  
-          writer.add_scalar('Loss/train_model1', objs.avg, step)
-          writer.add_scalar('Loss/train_model2', objs1.avg, step)
-          writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
-          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
-          writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
-          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
+          writer.add_scalar('Loss/train_model1', objs.avg, (epoch*200 + step))
+          writer.add_scalar('Loss/train_model2', objs1.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top1_model1', top1.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top5_model1', top5.avg,(epoch*200 + step))
+          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg,(epoch*200 + step))
 
         # return top1.avg, objs.avg, top1_1.avg, objs1.avg
     else:
@@ -517,6 +528,12 @@ def train(args,
                        objs.avg, top1.avg, top5.avg)
           logging.info('pretrain 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
+          writer.add_scalar('Loss/train_model1', objs.avg, step)
+          writer.add_scalar('Loss/train_model2', objs1.avg, step)
+          writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
+          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
+          writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
+          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
 
 
 
@@ -539,7 +556,7 @@ def train(args,
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 
 
-def infer(valid_queue, model, model1, criterion):
+def infer(valid_queue, model, model1, criterion, val_writer, epoch):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -551,10 +568,8 @@ def infer(valid_queue, model, model1, criterion):
 
   with torch.no_grad():
     for step, (input, target) in enumerate(valid_queue):
-        #input = input.cuda()
-        #target = target.cuda(non_blocking=True)
-        input = Variable(input, volatile=True).cuda()
-        target = Variable(target, volatile=True).cuda(non_blocking=True)
+        input = input.cuda()
+        target = target.cuda(non_blocking=True)
         logits = model(input)
         loss = criterion(logits, target)
         logits1 = model1(input)
@@ -576,6 +591,12 @@ def infer(valid_queue, model, model1, criterion):
                        objs.avg, top1.avg, top5.avg)
           logging.info('valid 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
+          val_writer.add_scalar('Loss/train_model1', objs.avg, (epoch*200 + step))
+          val_writer.add_scalar('Loss/train_model2', objs1.avg, (epoch*200 + step)) 
+          val_writer.add_scalar('Accuracy/Top1_model1', top1.avg, (epoch*200 + step)) 
+          val_writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, (epoch*200 + step))
+          val_writer.add_scalar('Accuracy/Top5_model1', top5.avg, (epoch*200 + step))
+          val_writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, (epoch*200 + step)) 
 
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 
