@@ -37,6 +37,7 @@ parser.add_argument('--cutout', action='store_true', default=False, help='use cu
 parser.add_argument('--cutout_length', type=int, default=16, help='cutout length')
 parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path probability')
 parser.add_argument('--save', type=str, default='EXP', help='experiment name')
+parser.add_argument('--load_model', type=str, default='', help='checkpoint to load model from')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--arch', type=str, default='PCDARTS', help='which architecture to use')
 parser.add_argument('--grad_clip', type=float, default=5, help='gradient clipping')
@@ -98,6 +99,8 @@ def main():
   #train_data = dset.CIFAR10(root=args.data, train=True, download=True, transform=train_transform)
   #valid_data = dset.CIFAR10(root=args.data, train=False, download=True, transform=valid_transform)
   train_data.data = train_data.data[:10000, ...]
+  num_train = 10000
+  num_val = 10000
   train_queue = torch.utils.data.DataLoader(
       train_data, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=2)
 
@@ -106,23 +109,38 @@ def main():
 
   scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
   best_acc = 0.0
-  for epoch in range(args.epochs):
+  start_epoch = 0
+  if args.load_model:
+      logging.info("Loading from checkpoint... ")
+      checkpoint = torch.load(args.load_model)
+      start_epoch = checkpoint['epoch']
+      model.load_state_dict(checkpoint['model'])
+      optimizer.load_state_dict(checkpoint['optimizer'])
+      scheduler = checkpoint['scheduler']
+      logging.info("Loaded checkpoint at Epoch %d", start_epoch)
+
+  for epoch in range(start_epoch, args.epochs):
     logging.info('epoch %d lr %e', epoch, scheduler.get_lr()[0])
     model.drop_path_prob = args.drop_path_prob * epoch / args.epochs
 
-    train_acc, train_obj = train(train_queue, model, criterion, optimizer, epoch, writer)
+    train_acc, train_obj = train(train_queue, model, criterion, optimizer, epoch, num_train, writer)
     scheduler.step()
     logging.info('train_acc %f', train_acc)
 
-    valid_acc, valid_obj = infer(valid_queue, model, criterion, epoch, val_writer)
+    valid_acc, valid_obj = infer(valid_queue, model, criterion, epoch, num_val, val_writer)
     if valid_acc > best_acc:
         best_acc = valid_acc
     logging.info('valid_acc %f, best_acc %f', valid_acc, best_acc)
 
     utils.save(model, os.path.join(args.save, 'weights.pt'))
+    torch.save({
+                'epoch': epoch,
+                'model': model.state_dict(),
+                'optimizer': optimizer.state_dict(),
+                'scheduler': scheduler,
+                }, os.path.join(args.save, 'checkpoint.pth'))
 
-
-def train(train_queue, model, criterion, optimizer, epoch, writer):
+def train(train_queue, model, criterion, optimizer, epoch, num_train, writer):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -150,14 +168,15 @@ def train(train_queue, model, criterion, optimizer, epoch, writer):
 
     if step % args.report_freq == 0:
       logging.info('train %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
-      writer.add_scalar('Loss/train', objs.avg, (epoch*200 + step))
-      writer.add_scalar('Accuracy/top1', top1.avg, (epoch*200 + step))
-      writer.add_scalar('Accuracy/top5', top5.avg, (epoch*200 + step))
+      global_step = epoch*(num_train/args.batch_size) + step
+      writer.add_scalar('Loss/train', objs.avg, global_step)
+      writer.add_scalar('Accuracy/top1', top1.avg, global_step)
+      writer.add_scalar('Accuracy/top5', top5.avg, global_step)
 
   return top1.avg, objs.avg
 
 
-def infer(valid_queue, model, criterion, epoch, val_writer):
+def infer(valid_queue, model, criterion, epoch, num_val, val_writer):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -179,9 +198,10 @@ def infer(valid_queue, model, criterion, epoch, val_writer):
 
       if step % args.report_freq == 0:
         logging.info('valid %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
-        val_writer.add_scalar('Loss/val', objs.avg, (epoch*200 + step))
-        val_writer.add_scalar('Accuracy/top1', top1.avg, (epoch*200 + step))
-        val_writer.add_scalar('Accuracy/top5', top5.avg, (epoch*200 + step))
+        global_step = epoch*(num_val/args.batch_size) + step
+        val_writer.add_scalar('Loss/val', objs.avg, global_step)
+        val_writer.add_scalar('Accuracy/top1', top1.avg, global_step)
+        val_writer.add_scalar('Accuracy/top5', top5.avg, global_step)
 
   return top1.avg, objs.avg
 
