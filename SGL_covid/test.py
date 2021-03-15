@@ -30,7 +30,7 @@ parser.add_argument('--report_freq', type=float, default=50, help='report freque
 parser.add_argument('--gpu', type=int, default=0, help='gpu device id')
 parser.add_argument('--init_channels', type=int, default=36, help='num of init channels')
 parser.add_argument('--layers', type=int, default=20, help='total number of layers')
-parser.add_argument('--model_path', type=str, default='path_to_model/weights.pt', help='path of pretrained model')
+parser.add_argument('--model_path', type=str, default='path_to_saved_model/weights.pt', help='path of pretrained model')
 parser.add_argument('--auxiliary', action='store_true', default=False, help='use auxiliary tower')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
 parser.add_argument('--cutout_length', type=int, default=16, help='cutout length')
@@ -139,11 +139,10 @@ def main():
 
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
-  
-  local_path = '../'
-  test_data = CovidCTDataset(root_dir=local_path + 'covid_data/',
-                              txt_COVID=local_path + 'covid_data/Data-split/COVID/valCT_COVID.txt',
-                              txt_NonCOVID=local_path + 'covid_data/Data-split/NonCOVID/valCT_NonCOVID.txt',
+
+  test_data = CovidCTDataset(root_dir='covid_data/',
+                              txt_COVID='covid_data/Data-split/COVID/valCT_COVID.txt',
+                              txt_NonCOVID='covid_data/Data-split/NonCOVID/valCT_NonCOVID.txt',
                               transform= val_transformer)
                               
   print("train val lengths:", len(test_data))                            

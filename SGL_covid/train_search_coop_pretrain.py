@@ -241,16 +241,14 @@ def main():
       momentum=args.momentum,
       weight_decay=args.weight_decay)
 
-  local_path = '../'
-  
-  train_data = CovidCTDataset(root_dir=local_path + 'covid_data/',
-                              txt_COVID=local_path + 'covid_data/Data-split/COVID/trainCT_COVID.txt',
-                              txt_NonCOVID=local_path + 'covid_data/Data-split/NonCOVID/trainCT_NonCOVID.txt',
+  train_data = CovidCTDataset(root_dir='covid_data/',
+                              txt_COVID='covid_data/Data-split/COVID/trainCT_COVID.txt',
+                              txt_NonCOVID='covid_data/Data-split/NonCOVID/trainCT_NonCOVID.txt',
                               transform= train_transformer)
 
-  valid_data = CovidCTDataset(root_dir=local_path + 'covid_data/',
-                              txt_COVID=local_path + 'covid_data/Data-split/COVID/valCT_COVID.txt',
-                              txt_NonCOVID=local_path + 'covid_data/Data-split/NonCOVID/valCT_NonCOVID.txt',
+  valid_data = CovidCTDataset(root_dir='covid_data/',
+                              txt_COVID='covid_data/Data-split/COVID/valCT_COVID.txt',
+                              txt_NonCOVID='covid_data/Data-split/NonCOVID/valCT_NonCOVID.txt',
                               transform= val_transformer)
                           
   train_queue = DataLoader(train_data, batch_size = args.batch_size, drop_last=False, shuffle=True)
