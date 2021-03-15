@@ -51,6 +51,7 @@ parser.add_argument('--cutout_length', type=int,
 parser.add_argument('--drop_path_prob', type=float,
                     default=0.3, help='drop path probability')
 parser.add_argument('--save', type=str, default='EXP', help='experiment name')
+parser.add_argument('--load_model', type=str, default='', help='checkpoint to load model from')
 parser.add_argument('--seed', type=int, default=2, help='random seed')
 parser.add_argument('--grad_clip', type=float,
                     default=5, help='gradient clipping')
@@ -137,8 +138,8 @@ def main():
   logging.info('gpu device = %d' % args.gpu)
   logging.info("args = %s", args)
 
-  writer = SummaryWriter(comment='train')
-  val_writer = SummaryWriter(comment='val')
+  writer = SummaryWriter(comment='-train')
+  val_writer = SummaryWriter(comment='-val')
   criterion = nn.CrossEntropyLoss()
   criterion = criterion.cuda()
   arch1, alphas_normal1, alphas_reduce1,\
@@ -214,6 +215,8 @@ def main():
         root=args.data, train=True, download=True, transform=train_transform)
 
   num_train = 20000 #len(train_data)
+  train_size = 10000
+  val_size = 10000
   indices = list(range(num_train))
   split = int(np.floor(args.train_portion * num_train))
 
@@ -245,7 +248,27 @@ def main():
   architect = Architect(model, model1, args)
   val_loss = np.zeros(args.epochs+args.pretrain_steps)
 
-  for epoch in range(args.epochs + args.pretrain_steps):
+  start_epoch = 0
+  
+  if args.load_model:
+      logging.info("Loading from checkpoint... ")
+      checkpoint = torch.load(args.load_model)
+      start_epoch = checkpoint['epoch']
+      model.load_state_dict(checkpoint['model'])
+      model1.load_state_dict(checkpoint['model1'])
+      model_pretrain.load_state_dict(checkpoint['model_pretrain'])
+      model1_pretrain.load_state_dict(checkpoint['model1_pretrain'])
+      optimizer.load_state_dict(checkpoint['optimizer'])
+      optimizer1.load_state_dict(checkpoint['optimizer1'])
+      optimizer_pretrain.load_state_dict(checkpoint['optimizer_pretrain'])
+      optimizer1_pretrain.load_state_dict(checkpoint['optimizer1_pretrain'])
+      scheduler = checkpoint['scheduler']
+      scheduler1 = checkpoint['scheduler1']
+      scheduler_pretrain = checkpoint['scheduler_pretrain']
+      scheduler1_pretrain = checkpoint['scheduler1_pretrain']
+      logging.info("Loaded checkpoint at Epoch %d", start_epoch)
+
+  for epoch in range(start_epoch, args.epochs + args.pretrain_steps):
     lr = scheduler.get_lr()[0]
     lr1 = scheduler1.get_lr()[0]
     lr_pretrain = scheduler_pretrain.get_lr()[0]
@@ -289,7 +312,8 @@ def main():
         lr1,
         lr_pretrain,
         lr1_pretrain,
-        writer)
+        writer,
+        train_size)
     if epoch >= args.pretrain_steps:
         logging.info('train_acc %f train_acc1 %f', train_acc, train_acc1)
     else:
@@ -306,28 +330,46 @@ def main():
         scheduler_pretrain.step()
         scheduler1_pretrain.step()
     # validation
-    if epoch >= args.pretrain_steps and epoch % 10 == 0:
+    #if epoch >= args.pretrain_steps and epoch % 10 == 0:
+    if epoch % 10 == 0:
         valid_acc, valid_obj, valid_acc1, valid_obj1 = infer(
             valid_queue,
             model,
             model1,
             criterion,
             val_writer,
-            epoch)
+            epoch,
+            val_size)
         logging.info('valid_acc %f valid_acc1 %f', valid_acc, valid_acc1)
         val_writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
         val_writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
-        utils.save(model, os.path.join(args.save, 'checkpoint_weights.pt'))
-        utils.save(model1, os.path.join(args.save, 'checkpoint_weights1.pt'))
-        val_loss[epoch] = valid_obj + valid_obj1
-        val_difference = val_loss[epoch-6:epoch-1] - val_loss[epoch-5:epoch]
-        if np.all(val_difference < 0):
-            logging.info('Early stopping due to increasing validation loss')
-            break
-        if val_loss[epoch] == min(val_loss):
-           utils.save(model, os.path.join(args.save, 'best_weights.pt'))
-           utils.save(model1, os.path.join(args.save, 'best_weights1.pt'))
+        #utils.save(model, os.path.join(args.save, 'checkpoint_weights.pt'))
+        #utils.save(model1, os.path.join(args.save, 'checkpoint_weights1.pt'))
+        if epoch >= args.pretrain_steps:
+            val_loss[epoch] = valid_obj + valid_obj1
+            val_difference = val_loss[epoch-6:epoch-1] - val_loss[epoch-5:epoch]
+            if np.all(val_difference < 0):
+                logging.info('Early stopping due to increasing validation loss')
+                break
+            if val_loss[epoch] == min(val_loss):
+               utils.save(model, os.path.join(args.save, 'best_weights.pt'))
+               utils.save(model1, os.path.join(args.save, 'best_weights1.pt'))
 
+        torch.save({
+                    'epoch': epoch,
+                    'model': model.state_dict(),
+                    'model1': model1.state_dict(),
+                    'model_pretrain': model_pretrain.state_dict(),
+                    'model1_pretrain': model1_pretrain.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'optimizer1': optimizer1.state_dict(),
+                    'optimizer_pretrain': optimizer_pretrain.state_dict(),
+                    'optimizer1_pretrain': optimizer1_pretrain.state_dict(),
+                    'scheduler': scheduler,
+                    'scheduler1': scheduler1,
+                    'scheduler_pretrain': scheduler_pretrain,
+                    'scheduler1_pretrain': scheduler1_pretrain
+                    }, os.path.join(args.save, 'checkpoint.pth'))
 
 
     # lr = scheduler.get_lr()[0]
@@ -372,7 +414,8 @@ def train(args,
           lr1,
           lr_pretrain,
           lr1_pretrain,
-          writer):
+          writer,
+          num_train):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -528,12 +571,14 @@ def train(args,
                        objs.avg, top1.avg, top5.avg)
           logging.info('pretrain 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
-          writer.add_scalar('Loss/train_model1', objs.avg, step)
-          writer.add_scalar('Loss/train_model2', objs1.avg, step)
-          writer.add_scalar('Accuracy/Top1_model1', top1.avg, step)
-          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, step)
-          writer.add_scalar('Accuracy/Top5_model1', top5.avg, step)
-          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, step)
+
+          global_step = epoch*(num_train/args.batch_size) + step
+          writer.add_scalar('Loss/train_model1', objs.avg, global_step)
+          writer.add_scalar('Loss/train_model2', objs1.avg, global_step)
+          writer.add_scalar('Accuracy/Top1_model1', top1.avg, global_step)
+          writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, global_step)
+          writer.add_scalar('Accuracy/Top5_model1', top5.avg, global_step)
+          writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, global_step)
 
 
 
@@ -556,7 +601,7 @@ def train(args,
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 
 
-def infer(valid_queue, model, model1, criterion, val_writer, epoch):
+def infer(valid_queue, model, model1, criterion, val_writer, epoch, num_val):
   objs = utils.AvgrageMeter()
   top1 = utils.AvgrageMeter()
   top5 = utils.AvgrageMeter()
@@ -591,12 +636,14 @@ def infer(valid_queue, model, model1, criterion, val_writer, epoch):
                        objs.avg, top1.avg, top5.avg)
           logging.info('valid 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
-          val_writer.add_scalar('Loss/train_model1', objs.avg, (epoch*200 + step))
-          val_writer.add_scalar('Loss/train_model2', objs1.avg, (epoch*200 + step)) 
-          val_writer.add_scalar('Accuracy/Top1_model1', top1.avg, (epoch*200 + step)) 
-          val_writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, (epoch*200 + step))
-          val_writer.add_scalar('Accuracy/Top5_model1', top5.avg, (epoch*200 + step))
-          val_writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, (epoch*200 + step)) 
+
+          global_step = epoch*(num_val/args.batch_size) + step
+          val_writer.add_scalar('Loss/train_model1', objs.avg, global_step) 
+          val_writer.add_scalar('Loss/train_model2', objs1.avg, global_step) 
+          val_writer.add_scalar('Accuracy/Top1_model1', top1.avg, global_step) 
+          val_writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, global_step)
+          val_writer.add_scalar('Accuracy/Top5_model1', top5.avg, global_step)
+          val_writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, global_step) 
 
   return top1.avg, objs.avg, top1_1.avg, objs1.avg
 

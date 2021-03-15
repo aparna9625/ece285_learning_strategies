@@ -16,6 +16,7 @@ import torchvision.transforms as transforms
 import torch.backends.cudnn as cudnn
 
 from torch.autograd import Variable
+from torch.utils.tensorboard import SummaryWriter
 from model import NetworkImageNet as Network
 
 
@@ -33,6 +34,7 @@ parser.add_argument('--auxiliary', action='store_true', default=False, help='use
 parser.add_argument('--auxiliary_weight', type=float, default=0.4, help='weight for auxiliary loss')
 parser.add_argument('--drop_path_prob', type=float, default=0, help='drop path probability')
 parser.add_argument('--save', type=str, default='./', help='experiment name')
+parser.add_argument('--load_model', type=str, default='', help='load checkpoint path')
 parser.add_argument('--seed', type=int, default=0, help='random seed')
 parser.add_argument('--arch', type=str, default='PCDARTS', help='which architecture to use')
 parser.add_argument('--grad_clip', type=float, default=5., help='gradient clipping')
@@ -54,7 +56,7 @@ fh = logging.FileHandler(os.path.join(args.save, 'log.txt'))
 fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
-CLASSES = 1000
+CLASSES = 200
 
 class CrossEntropyLabelSmooth(nn.Module):
 
@@ -95,6 +97,9 @@ def main():
         model = model.cuda()
     logging.info("param size = %fMB", utils.count_parameters_in_MB(model))
 
+    writer = SummaryWriter(comment="-train")
+    val_writer = SummaryWriter(comment="-val")
+
     criterion = nn.CrossEntropyLoss()
     criterion = criterion.cuda()
     criterion_smooth = CrossEntropyLabelSmooth(CLASSES, args.label_smooth)
@@ -132,18 +137,36 @@ def main():
             normalize,
         ]))
 
+    num_train = 10000
+    num_val = 10000
     train_queue = torch.utils.data.DataLoader(
-        train_data, batch_size=args.batch_size, shuffle=True, pin_memory=True, num_workers=args.workers)
+        train_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(list(range(10000))),
+        #shuffle=True,
+        pin_memory=True, num_workers=args.workers)
 
     valid_queue = torch.utils.data.DataLoader(
-        valid_data, batch_size=args.batch_size, shuffle=False, pin_memory=True, num_workers=args.workers)
+        valid_data, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(list(range(10000))),
+        #shuffle=False,
+        pin_memory=True, num_workers=args.workers)
 
 #    scheduler = torch.optim.lr_scheduler.StepLR(optimizer, args.decay_period, gamma=args.gamma)
     scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, float(args.epochs))
     best_acc_top1 = 0
     best_acc_top5 = 0
     lr = args.learning_rate
-    for epoch in range(args.epochs):
+    start_epoch = 0
+    if args.load_model:
+        logging.info("Loading from checkpoint... ")
+        checkpoint = torch.load(args.load_model)
+        start_epoch = checkpoint['epoch'] - 1
+        model = checkpoint['state_dict']
+        optimizer = checkpoint['optimizer']
+        logging.info("Loaded at Epoch %d", start_epoch)
+
+
+    for epoch in range(start_epoch, args.epochs):
         if args.lr_scheduler == 'cosine':
             scheduler.step()
             current_lr = scheduler.get_lr()[0]
@@ -162,10 +185,10 @@ def main():
         else:
             model.drop_path_prob = args.drop_path_prob * epoch / args.epochs
         epoch_start = time.time()
-        train_acc, train_obj = train(train_queue, model, criterion_smooth, optimizer)
+        train_acc, train_obj = train(train_queue, model, criterion_smooth, optimizer, epoch, num_train, writer)
         logging.info('Train_acc: %f', train_acc)
 
-        valid_acc_top1, valid_acc_top5, valid_obj = infer(valid_queue, model, criterion)
+        valid_acc_top1, valid_acc_top5, valid_obj = infer(valid_queue, model, criterion, epoch, num_val, val_writer)
         logging.info('Valid_acc_top1: %f', valid_acc_top1)
         logging.info('Valid_acc_top5: %f', valid_acc_top5)
         epoch_duration = time.time() - epoch_start
@@ -193,7 +216,7 @@ def adjust_lr(optimizer, epoch):
         param_group['lr'] = lr
     return lr        
 
-def train(train_queue, model, criterion, optimizer):
+def train(train_queue, model, criterion, optimizer, epoch, num_train, writer):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
@@ -232,10 +255,14 @@ def train(train_queue, model, criterion, optimizer):
             logging.info('TRAIN Step: %03d Objs: %e R1: %f R5: %f Duration: %ds BTime: %.3fs', 
                                     step, objs.avg, top1.avg, top5.avg, duration, batch_time.avg)
 
+            global_step = epoch*(num_train/args.batch_size) + step
+            writer.add_scalar('Loss/train', objs.avg, global_step)
+            writer.add_scalar('Accuracy/top1', top1.avg, global_step)
+            writer.add_scalar('Accuracy/top5', top5.avg, global_step)
     return top1.avg, objs.avg
 
 
-def infer(valid_queue, model, criterion):
+def infer(valid_queue, model, criterion, epoch, num_val, val_writer):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
@@ -262,7 +289,12 @@ def infer(valid_queue, model, criterion):
                 else:
                     duration = end_time - start_time
                     start_time = time.time()
+
+                global_step = epoch*(num_val/args.batch_size) + step
                 logging.info('VALID Step: %03d Objs: %e R1: %f R5: %f Duration: %ds', step, objs.avg, top1.avg, top5.avg, duration)
+                val_writer.add_scalar('Loss/val', objs.avg, global_step)
+                val_writer.add_scalar('Accuracy/top1', top1.avg, global_step)
+                val_writer.add_scalar('Accuracy/top5', top5.avg, global_step)
 
     return top1.avg, top5.avg, objs.avg
 

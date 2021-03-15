@@ -20,10 +20,8 @@ CIFAR-100: cd SGL-pc-darts && python train_search_coop_pretrain.py --weight_lamb
 --set cifar100 --gpu 0 --batch_size 50 --save xxx
 ```
 
-* Data preparation: Please first sample 10% and 2.5% images for each class as the training and validation set, which is done by pcdarts-LCT/sample_images.py.
-
 ```
-ImageNet: cd SGL-pc-darts && python train_search_coop_pretrain.py --save xxx --tmp_data_dir xxx \\
+ImageNet: cd SGL-pc-darts && python train_search_imagenet_coop_pretrain.py --save xxx --tmp_data_dir xxx \\
 --weight_lambda 1
 ```
 
@@ -32,21 +30,16 @@ where you can change the value of lambda.
 ## Architecture Evaluation
 
 ```
-ImageNet: cd SGL-pdarts && python train_imagenet.py --auxiliary --arch xxx
-```
-
-**Composing LCT with PC-DARTS:**
-
-```
-ImageNet: cd SGL-pc-darts && python train.py --cutout --auxiliary \\
---set cifar10/100 --arch xxx \\
---seed 3 --save xxx
+CIFAR-10: cd SGL-pc-darts && python train.py --cutout --auxiliary -set cifar10 --seed 3 --save xxx --arch xxx
 ```
 
 ```
-ImageNet: cd SGL-pc-darts && python train_imagenet.py --note xxx --auxiliary --arch xxx
+CIFAR-100: cd SGL-pc-darts && python train.py --cutout --auxiliary -set cifar100 --seed 3 --save xxx --arch xxx
 ```
 
+```
+ImageNet: cd SGL-pc-darts && python train_imagenet.py --cutout --auxiliary --arch xxx --save xxx
+```
 
 ## Ablation Study (Search)
 

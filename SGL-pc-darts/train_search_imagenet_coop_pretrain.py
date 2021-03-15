@@ -16,6 +16,8 @@ import torch.backends.cudnn as cudnn
 # import copy
 
 from torch.autograd import Variable
+from torch.utils.tensorboard import SummaryWriter
+from torch.utils.data import SubsetRandomSampler
 from model_search_imagenet_coop import Network
 from genotypes import PRIMITIVES
 # from architect_coop import Architect
@@ -34,6 +36,7 @@ parser.add_argument('--epochs', type=int, default=45, help='num of training epoc
 parser.add_argument('--init_channels', type=int, default=16, help='num of init channels')
 parser.add_argument('--layers', type=int, default=8, help='total number of layers')
 parser.add_argument('--model_path', type=str, default='saved_models', help='path to save the model')
+parser.add_argument('--load_model', type=str, default='', help='load from this model path')
 parser.add_argument('--cutout', action='store_true', default=False, help='use cutout')
 parser.add_argument('--cutout_length', type=int, default=16, help='cutout length')
 parser.add_argument('--drop_path_prob', type=float, default=0.3, help='drop path probability')
@@ -43,7 +46,7 @@ parser.add_argument('--grad_clip', type=float, default=5, help='gradient clippin
 parser.add_argument('--unrolled', action='store_true', default=False, help='use one-step unrolled validation loss')
 parser.add_argument('--arch_learning_rate', type=float, default=6e-3, help='learning rate for arch encoding')
 parser.add_argument('--arch_weight_decay', type=float, default=1e-3, help='weight decay for arch encoding')
-parser.add_argument('--begin', type=int, default=35, help='batch size')
+parser.add_argument('--begin', type=int, default=0, help='batch size')
 
 parser.add_argument('--tmp_data_dir', type=str, default='/cache/', help='temp data dir')
 parser.add_argument('--note', type=str, default='try', help='note for this run')
@@ -61,10 +64,10 @@ fh = logging.FileHandler(os.path.join(args.save, 'log.txt'))
 fh.setFormatter(logging.Formatter(log_format))
 logging.getLogger().addHandler(fh)
 
-data_dir = os.path.join(args.tmp_data_dir, 'imagenet_sampled')
+data_dir = os.path.join(args.data, 'imagenet')
  #data preparation, we random sample 10% and 2.5% from training set(each class) as train and val, respectively.
 #Note that the data sampling can not use torch.utils.data.sampler.SubsetRandomSampler as imagenet is too large   
-CLASSES = 1000
+CLASSES = 200
 
 
 
@@ -106,6 +109,8 @@ def main():
     torch.cuda.manual_seed(args.seed)
     #logging.info('gpu device = %d' % args.gpu)
     logging.info("args = %s", args)
+    writer = SummaryWriter(comment='-imagenet-train')
+    val_writer = SummaryWriter(comment='-imagenet-val')
     #dataset_dir = '/cache/'
     #pre.split_dataset(dataset_dir)
     #sys.exit(1)
@@ -138,6 +143,8 @@ def main():
         ]))
     num_train = len(train_data1)
     num_val = len(train_data2)
+    num_train = 10000
+    num_val = 10000
     print('# images to train network: %d' % num_train)
     print('# images to validate network: %d' % num_val)
     arch1, alphas_normal1, alphas_reduce1,\
@@ -224,11 +231,15 @@ def main():
                         num_workers=args.workers)
 
     train_queue = torch.utils.data.DataLoader(
-        train_data1, batch_size=args.batch_size, shuffle=True,
+        train_data1, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(list(range(10000))),
+        #shuffle=True,
         pin_memory=True, num_workers=args.workers)
 
     external_queue = torch.utils.data.DataLoader(
-        train_data1, batch_size=args.batch_size, shuffle=True,
+        train_data1, batch_size=args.batch_size,
+        sampler=torch.utils.data.sampler.SubsetRandomSampler(list(range(10000))),
+        #shuffle=True,
         pin_memory=True, num_workers=args.workers)
 
     valid_queue = torch.utils.data.DataLoader(
@@ -246,14 +257,40 @@ def main():
 
     #architect = Architect(model, args)
     lr=args.learning_rate
-    for epoch in range(args.epochs + args.pretrain_steps):
+    start_epoch = 0
+    
+    if args.load_model:
+        logging.info("Loading from checkpoint... ")
+        checkpoint = torch.load(args.load_model)
+        start_epoch = checkpoint['epoch']
+        model.load_state_dict(checkpoint['model'])
+        model1.load_state_dict(checkpoint['model1'])
+        model_pretrain.load_state_dict(checkpoint['model_pretrain'])
+        model1_pretrain.load_state_dict(checkpoint['model1_pretrain'])
+        optimizer.load_state_dict(checkpoint['optimizer'])
+        optimizer1.load_state_dict(checkpoint['optimizer1'])
+        optimizer_pretrain.load_state_dict(checkpoint['optimizer_pretrain'])
+        optimizer1_pretrain.load_state_dict(checkpoint['optimizer1_pretrain'])
+        optimizer_a.load_state_dict(checkpoint['optimizer_a'])
+        optimizer_a1.load_state_dict(checkpoint['optimizer_a1'])
+        scheduler = checkpoint['scheduler']
+        scheduler1 = checkpoint['scheduler1']
+        scheduler_pretrain = checkpoint['scheduler_pretrain']
+        scheduler1_pretrain = checkpoint['scheduler1_pretrain']
+        logging.info("Loaded checkpoint at Epoch %d", start_epoch)
+
+    for epoch in range(start_epoch, args.epochs + args.pretrain_steps):
         current_lr = scheduler.get_lr()[0]
         current_lr1 = scheduler1.get_lr()[0]
         current_lr_pretrain = scheduler_pretrain.get_lr()[0]
         current_lr1_pretrain = scheduler1_pretrain.get_lr()[0]
         logging.info('epoch %d lr %e lr1 %e lr_pretrain %e lr1_pretrain %e',
-                 epoch, current_lr, current_lr1, current_lr_pretrain, current_lr1_pretrain)
-        if epoch < 5 and args.batch_size > 256:
+                 epoch, current_lr, current_lr1, current_lr_pretrain, current_lr1_pretrain)    
+        writer.add_scalar('Learning_rate/train_model1', current_lr, epoch)
+        writer.add_scalar('Learning_rate/train_model2', current_lr1, epoch)
+        writer.add_scalar('Learning_rate/pretrain_model1', current_lr_pretrain, epoch)
+        writer.add_scalar('Learning_rate/pretrain_model2', current_lr1_pretrain, epoch)
+        if epoch < 5 and args.batch_size > 50:
             for param_group in optimizer_pretrain.param_groups:
                 param_group['lr'] = lr * (epoch + 1) / 5.0
             logging.info('Warming-up Pretrain Epoch: %d, LR: %e', epoch, lr * (epoch + 1) / 5.0)
@@ -277,13 +314,13 @@ def main():
             logging.info('genotype = %s', genotype)
             genotype1 = model1.module.genotype()
             logging.info('genotype1 = %s', genotype1)
-            arch_param = model.module.arch_parameters()
-            logging.info(F.softmax(arch_param[0], dim=-1))
-            logging.info(F.softmax(arch_param[1], dim=-1))
+            #arch_param = model.module.arch_parameters()
+            #logging.info(F.softmax(arch_param[0], dim=-1))
+            #logging.info(F.softmax(arch_param[1], dim=-1))
 
-            arch_param1 = model1.module.arch_parameters()
-            logging.info(F.softmax(arch_param1[0], dim=-1))
-            logging.info(F.softmax(arch_param1[1], dim=-1))
+            #arch_param1 = model1.module.arch_parameters()
+            #logging.info(F.softmax(arch_param1[0], dim=-1))
+            #logging.info(F.softmax(arch_param1[1], dim=-1))
         # training
         train_acc, train_obj, train_acc1, train_obj1 = train(
             train_queue,
@@ -301,7 +338,9 @@ def main():
             optimizer_a1,
             criterion,
             lr,
-            epoch)
+            epoch,
+            writer,
+            num_train)
         if epoch >= args.pretrain_steps:
             scheduler_pretrain.step()
             scheduler1_pretrain.step()
@@ -315,15 +354,38 @@ def main():
             logging.info('train_acc %f train_acc1 %f', train_acc, train_acc1)
         else:
             logging.info('pretrain_acc %f pretrain_acc1 %f', train_acc, train_acc1)
+        
+        writer.add_scalar('Accuracy/train_model1', train_acc, epoch)
+        writer.add_scalar('Accuracy/train_model2', train_acc1, epoch)
+        
         # validation
-        if epoch >= 47 + args.pretrain_steps:
-            valid_acc, valid_obj, valid_acc1, valid_obj1 = infer(valid_queue, model, model1, criterion)
+        if epoch >= 45 + args.pretrain_steps or epoch % 10 == 0:
+            valid_acc, valid_obj, valid_acc1, valid_obj1 = infer(valid_queue, model, model1, criterion, val_writer, epoch, num_val)
             #test_acc, test_obj = infer(test_queue, model, criterion)
             logging.info('Valid_acc %f', valid_acc)
             logging.info('Valid_acc1 %f', valid_acc1)
+            val_writer.add_scalar('Accuracy/valid_model1', valid_acc, epoch)
+            val_writer.add_scalar('Accuracy/valid_model2', valid_acc1, epoch)
             #logging.info('Test_acc %f', test_acc)
 
-        #utils.save(model, os.path.join(args.save, 'weights.pt'))
+        torch.save({
+                    'epoch': epoch,
+                    'model': model.state_dict(),
+                    'model1': model1.state_dict(),
+                    'model_pretrain': model_pretrain.state_dict(),
+                    'model1_pretrain': model1_pretrain.state_dict(),
+                    'optimizer': optimizer.state_dict(),
+                    'optimizer1': optimizer1.state_dict(),
+                    'optimizer_pretrain': optimizer_pretrain.state_dict(),
+                    'optimizer1_pretrain': optimizer1_pretrain.state_dict(),
+                    'optimizer_a': optimizer_a.state_dict(),
+                    'optimizer_a1': optimizer_a1.state_dict(),
+                    'scheduler': scheduler,
+                    'scheduler1': scheduler1,
+                    'scheduler_pretrain': scheduler_pretrain,
+                    'scheduler1_pretrain': scheduler1_pretrain
+                    }, os.path.join(args.save, 'checkpoint_weights.pth'))
+
 
 def train(train_queue,
             external_queue,
@@ -340,7 +402,9 @@ def train(train_queue,
             optimizer_a1,
             criterion,
             lr,
-            epoch):
+            epoch,
+            writer,
+            num_train):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
@@ -458,6 +522,13 @@ def train(train_queue,
                            objs.avg, top1.avg, top5.avg)
               logging.info('train 2nd %03d %e %f %f', step,
                            objs1.avg, top1_1.avg, top5_1.avg)
+              global_step = epoch*(num_train/args.batch_size) + step
+              writer.add_scalar('Loss/train_model1', objs.avg, global_step)
+              writer.add_scalar('Loss/train_model2', objs1.avg, global_step)
+              writer.add_scalar('Accuracy/Top1_model1', top1.avg, global_step)
+              writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, global_step)
+              writer.add_scalar('Accuracy/Top5_model1', top5.avg, global_step)
+              writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, global_step)
             # return top1.avg, objs.avg, top1_1.avg, objs1.avg
         else:
             # assert (model_pretrain._arch_parameters[0]
@@ -499,6 +570,13 @@ def train(train_queue,
               logging.info('pretrain 2nd %03d %e %f %f', step,
                            objs1.avg, top1_1.avg, top5_1.avg)
 
+              global_step = epoch*(num_train/args.batch_size) + step
+              writer.add_scalar('Loss/train_model1', objs.avg, global_step)
+              writer.add_scalar('Loss/train_model2', objs1.avg, global_step)
+              writer.add_scalar('Accuracy/Top1_model1', top1.avg, global_step)
+              writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, global_step)
+              writer.add_scalar('Accuracy/Top5_model1', top5.avg, global_step)
+              writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, global_step)
 
         # optimizer.zero_grad()
         # logits = model(input)
@@ -521,7 +599,7 @@ def train(train_queue,
 
 
 
-def infer(valid_queue, model, model1, criterion):
+def infer(valid_queue, model, model1, criterion, val_writer, epoch, num_val):
     objs = utils.AvgrageMeter()
     top1 = utils.AvgrageMeter()
     top5 = utils.AvgrageMeter()
@@ -565,6 +643,14 @@ def infer(valid_queue, model, model1, criterion):
                        objs.avg, top1.avg, top5.avg)
           logging.info('valid 2nd %03d %e %f %f', step,
                        objs1.avg, top1_1.avg, top5_1.avg)
+
+          global_step = epoch*(num_val/args.batch_size) + step
+          val_writer.add_scalar('Loss/train_model1', objs.avg, global_step)
+          val_writer.add_scalar('Loss/train_model2', objs1.avg, global_step)
+          val_writer.add_scalar('Accuracy/Top1_model1', top1.avg, global_step)
+          val_writer.add_scalar('Accuracy/Top1_model2', top1_1.avg, global_step)
+          val_writer.add_scalar('Accuracy/Top5_model1', top5.avg, global_step)
+          val_writer.add_scalar('Accuracy/Top5_model2', top5_1.avg, global_step)
         # if step % args.report_freq == 0:
         #     logging.info('valid %03d %e %f %f', step, objs.avg, top1.avg, top5.avg)
     return top1.avg, objs.avg, top1_1.avg, objs1.avg
