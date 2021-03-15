@@ -6,6 +6,8 @@ In order to run this code, please follow folders corresponding to the task of in
 * ```SGL-pc-darts``` - Trains a PC-DARTS based Small Group Learning model on CIFAR10/100
 * ```SGL-covid``` - Trains a PC-DARTS based Small Group Learning model on COVID-CT data
 
+<hr/>
+
 ### Code References
 * Partial Channel Connections for Memory-Efficient Differentiable Architecture Search(PC-DARTS) by Yuhui Xu, Lingxi Xie, Xiaopeng Zhang, Xin Chen, Guo-Jun Qi, Qi Tian and Hongkai Xiong. [Code](https://github.com/yuhuixu1993/PC-DARTS), [Paper](https://openreview.net/forum?id=BJlS634tPr)
 * Small Group Learning with Application to Neural Architecture Search by Xuefeng Du, Pengtao Xie. (Code provided privately) [Paper](https://arxiv.org/abs/2012.12502)
