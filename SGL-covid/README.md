@@ -1,3 +1,5 @@
+## Code for Small Group Learning on COVID-CT dataset
+
 1. Download COVID-CT dataset from https://github.com/UCSD-AI4H/COVID-CT
 --> unzip CT_COVID.zip and CT_NonCOVID.zip in the covid_data folder
 
