@@ -1,9 +1,10 @@
 # Comparison of learning algorithms for COVID-CT classification
 This codebase compares two learning strategies Interleaving learning and Small Group Learning. Further, we also explore the effects of Small Group Learning on the COVID-CT dataset and improvement in image classification results.
 In order to run this code, please follow folders corresponding to the task of interest. Each folder contains a README.md to walk through the steps for running the code.
-IL-darts - Trains a DARTS based Interleaving Learning model on CIFAR10/100
-SGL-pc-darts - Trains a PC-DARTS based Small Group Learning model on CIFAR10/100
-SGL-covid - Trains a PC-DARTS based Small Group Learning model on COVID-CT data
+
+* IL-darts - Trains a DARTS based Interleaving Learning model on CIFAR10/100
+* SGL-pc-darts - Trains a PC-DARTS based Small Group Learning model on CIFAR10/100
+* SGL-covid - Trains a PC-DARTS based Small Group Learning model on COVID-CT data
 
 ### Code References
 * Partial Channel Connections for Memory-Efficient Differentiable Architecture Search(PC-DARTS) by Yuhui Xu, Lingxi Xie, Xiaopeng Zhang, Xin Chen, Guo-Jun Qi, Qi Tian and Hongkai Xiong. [Code](https://github.com/yuhuixu1993/PC-DARTS), [Paper](https://openreview.net/forum?id=BJlS634tPr)
