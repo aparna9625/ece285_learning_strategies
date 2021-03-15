@@ -1,12 +1,13 @@
-MODEL SEARCH
-python train_search_coop_pretrain.py
+1. Download COVID-CT dataset from https://github.com/UCSD-AI4H/COVID-CT
+--> unzip CT_COVID.zip and CT_NonCOVID.zip in the covid_data folder
 
-copy the best genotype from search into genotypes.py and pass it as argument (--arch) for training
+2. To perform model search:
+  python train_search_coop_pretrain.py
 
-MODEL TRAINING
-python train.py
+--> copy the best genotype from search into genotypes.py
 
-pass the directory to the saved model weights for testing (--model_path)
+3. To perform model training:
+  python train.py --arch <genotype name>
 
-MODEL TESTING
-python test.py
+4. To perform model testing:
+  python test.py --model_path <path to trained model weights>
