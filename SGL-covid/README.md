@@ -1,15 +1,23 @@
 ## Code for Small Group Learning on COVID-CT dataset
 
-1. Download COVID-CT dataset from https://github.com/UCSD-AI4H/COVID-CT
---> unzip CT_COVID.zip and CT_NonCOVID.zip in the covid_data folder
+1. Download COVID-CT dataset from https://github.com/UCSD-AI4H/COVID-CT and unzip the files into the covid_data folder
+    ```
+    cd covid_data/
+    unzip CT_COVID.zip && unzip CT_NonCOVID.zip
+    ```
+2. Perform model search
+    ```
+    python train_search_coop_pretrain.py
+    ```
 
-2. To perform model search:
-  python train_search_coop_pretrain.py
+3. Copy the best genotype from search logs into genotypes.py using a unique identifier 
 
---> copy the best genotype from search into genotypes.py
+3. Perform model training for image classification on searched model
+    ```
+    python train.py --arch <genotype_name>
+    ```
 
-3. To perform model training:
-  python train.py --arch <genotype name>
-
-4. To perform model testing:
-  python test.py --model_path <path to trained model weights>
+4. Perform model testing
+    ```
+    python test.py --model_path <path to trained model weights>
+    ```
