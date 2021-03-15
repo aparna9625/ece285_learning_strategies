@@ -30,11 +30,11 @@ where you can change the value of lambda.
 ## Architecture Evaluation
 
 ```
-CIFAR-10: cd SGL-pc-darts && python train.py --cutout --auxiliary -set cifar10 --seed 3 --save xxx --arch xxx
+CIFAR-10: cd SGL-pc-darts && python train.py --cutout --auxiliary --set cifar10 --seed 3 --save xxx --arch xxx
 ```
 
 ```
-CIFAR-100: cd SGL-pc-darts && python train.py --cutout --auxiliary -set cifar100 --seed 3 --save xxx --arch xxx
+CIFAR-100: cd SGL-pc-darts && python train.py --cutout --auxiliary --set cifar100 --seed 3 --save xxx --arch xxx
 ```
 
 ```
