@@ -14,9 +14,9 @@ config = SearchConfig()
 
 device = torch.device("cuda")
 
-# tensorboard，支持简单的markdown文本格式记录
+#tensorboard
 writer = SummaryWriter(log_dir=os.path.join(config.path, "tb"))
-writer.add_text('config', config.as_markdown(), 0)  # 这里记录的是 config 信息
+writer.add_text('config', config.as_markdown(), 0)  
 
 logger = utils.get_logger(os.path.join(config.path, "{}.log".format(config.name)))
 config.print_params(logger.info)
@@ -33,7 +33,7 @@ def main():
     torch.manual_seed(config.seed)
     torch.cuda.manual_seed_all(config.seed)
 
-    torch.backends.cudnn.benchmark = True
+    #torch.backends.cudnn.benchmark = True
 
     # get cifar10 and cifar100 data with meta info
     _, input1_channels, n1_classes, train1_data = utils.get_data(
